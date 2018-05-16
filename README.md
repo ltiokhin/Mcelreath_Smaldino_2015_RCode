@@ -1,0 +1,1 @@
+# Mcelreath_Smaldino_2015_RCode_forSimulatiom

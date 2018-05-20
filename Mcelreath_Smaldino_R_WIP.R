@@ -1,22 +1,23 @@
 library(rethinking)
+library(plyr)
 
 rm(list=ls())  
 
 #parameters for the world
-beta <- 0.2
+beta <- 0.001
 power <- 1 - beta
-alpha <- c(0.05)
+alpha <- c(0.2)
 trueneg <- 1 - alpha
-baserates <- c(0.005)
-p_novel <- 0.8
+baserates <- c(0.1)
+p_novel <- 0.2
 
-n <- 20 #hypotheses tested each round
-rounds <- 5000
+n <- 100 #hypotheses tested each round
+rounds <- 2
 total_h <- n * rounds
 
 #communication parameters
 pos_nov_com <- 1
-pos_rep_com <- c(1)
+pos_rep_com <- c(0.2)
 neg_nov_com <- 0
 neg_rep_com <- 1
 
@@ -109,31 +110,48 @@ for(baserate in baserates) {
     r_df$result[r_spot:r_spot2] <- q_df$result
     r_df$comm[r_spot:r_spot2] <- q_df$comm
     r_df$tally[r_spot:r_spot2] <- q_df$tally
-  }
+  
   
   ##aggregate data frame for each unique hypothesis id, for communicated results only, because only these influence the tally
   r_df_comm <- r_df[r_df$comm==1,]
   final_df <- aggregate(tally ~ id + true, data=r_df_comm, FUN=sum)
   
-  ##plot
-  simplehist(final_df$tally[final_df$true==0], ylab = "Number of Hypotheses", xlab = "Tally", 
-             main = paste("False Hyp., +nov:", pos_nov_com, ", +rep", PR_COM, ", -nov", neg_nov_com, 
-                          ", -rep", neg_rep_com, ", Base Rate = ", baserate, "alpha:", alpha))
-  simplehist(final_df$tally[final_df$true==1], ylab = "Number of Hypotheses", xlab = "Tally", 
-             main = paste("True Hyp., +nov:", pos_nov_com, ", +rep", PR_COM, ", -nov", neg_nov_com, 
-                          ", -rep", neg_rep_com, ", Base Rate = ", baserate, "alpha:", alpha))
+  num_false_tally <- aggregate(true ~ tally, data=final_df[final_df$true==0,], FUN=length)
+  num_true_tally<- aggregate(true ~ tally, data=final_df[final_df$true==1,], FUN=length)
+  names(num_false_tally)[2] <- "num_false_h"
+  names(num_true_tally)[2] <- "num_true_h"
+  df_merged <- join(num_false_tally, num_true_tally, by = "tally", type = "inner")
   
-  ##precision: proportion of hypotheses at each tally that are true
-  precision_df <- aggregate(true ~ tally, data=final_df, FUN = function(x) sum(x) / length(x))
+  library(reshape)
+  df_melt <- melt(df_merged,id=("tally"))
   
-  gg <- ggplot(precision_df, aes(x = tally)) + geom_histogram(aes(y = true), stat = "identity") + 
-    scale_y_continuous(name = "Proportion of True Hypotheses at Tally") + 
-    scale_x_continuous(limits=c(-5, 10)) +
-    ggtitle(paste("Comm Param = +nov:", pos_nov_com, ", +rep", PR_COM, ", -nov", neg_nov_com, 
-                  ", -rep", neg_rep_com, ", Base Rate = ", baserate, "alpha:", alpha)) + theme_bw()
+  ggplot(df_melt, aes(x = tally, y=value, fill =variable )) + 
+    geom_bar(stat="identity", position=position_dodge(), alpha = 0.8, colour="black", size=.3) +
+    scale_fill_manual(values=c("#ef8a62", "#67a9cf"), name = "Hypotheses", labels=c("False", "True")) +
+    theme_classic(base_size = 12) +
+    ggtitle(paste("Number of Rounds:", runs))
   
-  plot(gg)
-  } } }
+  # ##plot
+  # simplehist(final_df$tally[final_df$true==0], ylab = "Number of Hypotheses", xlab = "Tally", 
+  #            main = paste("False Hyp., +nov:", pos_nov_com, ", +rep", PR_COM, ", -nov", neg_nov_com, 
+  #                         ", -rep", neg_rep_com, ", Base Rate = ", baserate, "alpha:", alpha))
+  # simplehist(final_df$tally[final_df$true==1], ylab = "Number of Hypotheses", xlab = "Tally", 
+  #            main = paste("True Hyp., +nov:", pos_nov_com, ", +rep", PR_COM, ", -nov", neg_nov_com, 
+  #                         ", -rep", neg_rep_com, ", Base Rate = ", baserate, "alpha:", alpha))
+  # 
+  # ##precision: proportion of hypotheses at each tally that are true
+  # precision_df <- aggregate(true ~ tally, data=final_df, FUN = function(x) sum(x) / length(x))
+  # 
+  # gg <- ggplot(precision_df, aes(x = tally)) + geom_histogram(aes(y = true), stat = "identity") + 
+  #   scale_y_continuous(name = "Proportion of True Hypotheses at Tally") + 
+  #   scale_x_continuous(limits=c(-5, 10)) +
+  #   ggtitle(paste("Comm Param = +nov:", pos_nov_com, ", +rep", PR_COM, ", -nov", neg_nov_com, 
+  #                 ", -rep", neg_rep_com, ", Base Rate = ", baserate, "alpha:", alpha)) + theme_bw()
+  # 
+  # plot(gg)
+  
+  } 
+    } } }
 
 #in a column called tally, stores the number of observations for each hypothesis
 n_studies_per_id <- aggregate(tally ~ id + true, data=r_df_comm, FUN = function(x) length(x))
@@ -159,7 +177,7 @@ for(i in u.tally){
   
   if(nrow(df_1_tally) > 0) {
     
-  simplehist(df_1_tally$n_tests, ylab = "Frequency", xlab = "Number of Hypothesis Tests", 
+  simplehist(df_1_tally$n_tests, ylab = "Total # Unique Hypotheses", xlab = "Number of Hypothesis Tests", ylim=c(0, nrow(final_df[final_df$tally==i,])),
              main = paste("FH., Tally:",i, "+nov:", pos_nov_com, ", +rep", PR_COM, ", -nov", neg_nov_com, 
                           ", -rep", neg_rep_com, ", Base Rate = ", baserate, "alpha:", alpha))
           
@@ -178,7 +196,7 @@ for(i in u.tally){
   
   if(nrow(df_1_tally) > 0) {
   
-  simplehist(df_1_tally$n_tests, ylab = "Frequency", xlab = "Number of Hypothesis Tests", 
+  simplehist(df_1_tally$n_tests, ylab = "Total # Unique Hypotheses", xlab = "Number of Hypothesis Tests", ylim=c(0, nrow(final_df[final_df$tally==i,])),
              main = paste("TH., Tally:",i, "+nov:", pos_nov_com, ", +rep", PR_COM, ", -nov", neg_nov_com, 
                           ", -rep", neg_rep_com, ", Base Rate = ", baserate, "alpha:", alpha))
   
@@ -193,9 +211,16 @@ for(i in u.tally){
 #For each element in FH_tally_list and TH_tally_list, we can see a table for the number of times that x tests 
 # led to that tally as follows
 
-unique(TH_tally_list[[5]]$tally) #the tally
-table(TH_tally_list[[5]]$n_tests) #the distribution of tests
+unique(TH_tally_list[[3]]$tally) #the tally
+table(TH_tally_list[[3]]$n_tests) #the distribution of tests
 
+unique(FH_tally_list[[12]]$tally) #the tally
+table(FH_tally_list[[12]]$n_tests) #the distribution of tests
 
+#where rthe true and false hypotheses lie
+simplehist(final_df$tally[final_df$true==1], main = "Where the true hypotheses lie; suppressing 80% +rep; 
+           Higher base rate (0.3)", ylim=c(0, 500))
+simplehist(final_df$tally[final_df$true==0], main = "Where the FALSE hypotheses lie; suppressing 80% +rep; 
+           Higher base rate (0.3)", ylim=c(0, 500))
 
 
